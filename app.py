@@ -6,6 +6,39 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
+# 🎨 PREMIUM CSS
+# ==============================
+st.markdown("""
+<style>
+body {
+    background-color: #0f172a;
+}
+
+.metric-card {
+    background-color: #1e293b;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+    color: white;
+    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+}
+
+.section-title {
+    font-size: 22px;
+    font-weight: bold;
+    margin-top: 20px;
+    color: #38bdf8;
+}
+
+.footer {
+    text-align: center;
+    padding: 20px;
+    color: gray;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
 # HEADER
 # ==============================
 st.title("🚗 EV Range Analysis Dashboard")
@@ -21,13 +54,14 @@ vehicle_type = st.sidebar.selectbox(
     ["turbo", "storm", "hiload"]
 )
 
-uploaded_file = st.sidebar.file_uploader(
-    "Upload Excel File",
-    type=["xlsx", "xls"]
+uploaded_files = st.sidebar.file_uploader(
+    "Upload Excel Files",
+    type=["xlsx", "xls"],
+    accept_multiple_files=True
 )
 
 # ==============================
-# REPORT FUNCTION (UPDATED)
+# REPORT FUNCTION
 # ==============================
 def generate_excel_report(results):
     df = pd.DataFrame({
@@ -59,42 +93,50 @@ def generate_excel_report(results):
 # ==============================
 # MAIN
 # ==============================
-if uploaded_file:
+if uploaded_files:
 
     if st.button("🚀 Run Analysis"):
 
-        with st.spinner("Processing..."):
-            results = process_ev_data(uploaded_file, vehicle_type)
+        all_results = []
 
-        if results is None:
-            st.error("No valid trip detected")
+        for file in uploaded_files:
+            with st.spinner(f"Processing {file.name}..."):
+                result = process_ev_data(file, vehicle_type)
+
+                if result:
+                    result["file_name"] = file.name
+                    all_results.append(result)
+
+        if len(all_results) == 0:
+            st.error("No valid trips detected")
         else:
-            st.success("Analysis Complete")
+            st.success("✅ Analysis Complete")
 
             # ==============================
-            # MAIN METRICS
+            # SHOW FIRST TRIP (DETAIL VIEW)
             # ==============================
+            results = all_results[0]
+
+            st.markdown('<p class="section-title">📊 Trip Overview</p>', unsafe_allow_html=True)
+
             col1, col2, col3, col4 = st.columns(4)
 
-            col1.metric("Start SOC", f"{results['start_soc']:.2f}")
-            col2.metric("End SOC", f"{results['end_soc']:.2f}")
-            col3.metric("Distance", f"{results['total_km']:.2f}")
-            col4.metric("Payload", f"{results['payload']:.2f}")
+            col1.markdown(f'<div class="metric-card">Start SOC<br><b>{results["start_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
+            col2.markdown(f'<div class="metric-card">End SOC<br><b>{results["end_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
+            col3.markdown(f'<div class="metric-card">Distance<br><b>{results["total_km"]:.2f} km</b></div>', unsafe_allow_html=True)
+            col4.markdown(f'<div class="metric-card">Payload<br><b>{results["payload"]:.2f}</b></div>', unsafe_allow_html=True)
 
             col5, col6, col7, col8 = st.columns(4)
 
-            col5.metric("Energy/km", f"{results['energy_per_km']:.2f}")
-            col6.metric("SOC Used", f"{results['soc_consumed']:.2f}")
-            col7.metric("Avg Current", f"{results['avg_current']:.2f}")
-            col8.metric("Mileage", 
-                f"{results['approx_mileage_energy']:.2f}" 
-                if results['approx_mileage_energy'] else "N/A"
-            )
+            col5.markdown(f'<div class="metric-card">Energy/km<br><b>{results["energy_per_km"]:.2f}</b></div>', unsafe_allow_html=True)
+            col6.markdown(f'<div class="metric-card">SOC Used<br><b>{results["soc_consumed"]:.2f}</b></div>', unsafe_allow_html=True)
+            col7.markdown(f'<div class="metric-card">Avg Current<br><b>{results["avg_current"]:.2f} A</b></div>', unsafe_allow_html=True)
+            col8.markdown(f'<div class="metric-card">Mileage<br><b>{results["approx_mileage_energy"]:.2f if results["approx_mileage_energy"] else 0}</b></div>', unsafe_allow_html=True)
 
             # ==============================
-            # 🔥 MODE-WISE KM + %
+            # MODE ANALYSIS
             # ==============================
-            st.subheader("⚙ Mode-wise Analysis")
+            st.markdown('<p class="section-title">⚙ Mode-wise Performance</p>', unsafe_allow_html=True)
 
             total = results['total_km']
 
@@ -108,26 +150,30 @@ if uploaded_file:
 
             colA, colB, colC = st.columns(3)
 
-            colA.metric(
-                "Economy",
-                f"{eco_km:.2f} km",
-                f"{eco:.1f}%"
-            )
-
-            colB.metric(
-                "Thunder",
-                f"{thu_km:.2f} km",
-                f"{thu:.1f}%"
-            )
-
-            colC.metric(
-                "Rhino",
-                f"{rhi_km:.2f} km",
-                f"{rhi:.1f}%"
-            )
+            colA.markdown(f'<div class="metric-card">Economy<br><b>{eco_km:.2f} km</b><br>{eco:.1f}%</div>', unsafe_allow_html=True)
+            colB.markdown(f'<div class="metric-card">Thunder<br><b>{thu_km:.2f} km</b><br>{thu:.1f}%</div>', unsafe_allow_html=True)
+            colC.markdown(f'<div class="metric-card">Rhino<br><b>{rhi_km:.2f} km</b><br>{rhi:.1f}%</div>', unsafe_allow_html=True)
 
             # ==============================
-            # DOWNLOAD REPORT
+            # MULTI-TRIP COMPARISON
+            # ==============================
+            st.markdown('<p class="section-title">📊 Multi-Trip Comparison</p>', unsafe_allow_html=True)
+
+            comparison_data = []
+
+            for r in all_results:
+                comparison_data.append({
+                    "Trip": r["file_name"],
+                    "Distance": round(r["total_km"], 2),
+                    "Energy/km": round(r["energy_per_km"], 2),
+                    "Mileage": round(r["approx_mileage_energy"], 2) if r["approx_mileage_energy"] else 0
+                })
+
+            df_compare = pd.DataFrame(comparison_data)
+            st.dataframe(df_compare, use_container_width=True)
+
+            # ==============================
+            # DOWNLOAD
             # ==============================
             file = generate_excel_report(results)
 
@@ -140,5 +186,9 @@ if uploaded_file:
 # ==============================
 # FOOTER
 # ==============================
-st.markdown("---")
-st.markdown("### 👨‍💻 Developed by Aditya Thangapandi")
+st.markdown("""
+<div class="footer">
+🚗 EV Analytics Dashboard <br>
+Developed by <b>Aditya Thangapandi</b>
+</div>
+""", unsafe_allow_html=True)
