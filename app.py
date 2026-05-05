@@ -8,7 +8,7 @@ st.set_page_config(page_title="EV Dashboard", layout="wide")
 # ==============================
 # HEADER
 # ==============================
-st.title("🚗 EV Range Analysis Dashboard")
+st.title("🚗 EV Range Analysis")
 st.caption("Developed by Aditya Thangapandi")
 
 # ==============================
@@ -57,6 +57,11 @@ def generate_excel_report(results):
     return output.getvalue()
 
 # ==============================
+# MOBILE DETECTION
+# ==============================
+is_mobile = st.session_state.get("is_mobile", False)
+
+# ==============================
 # MAIN
 # ==============================
 if uploaded_file:
@@ -71,63 +76,72 @@ if uploaded_file:
         else:
             st.success("✅ Analysis Complete")
 
-            # ==============================
-            # 📊 MAIN METRICS (CLEAN GRID)
-            # ==============================
-            st.subheader("📊 Trip Overview")
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            col1.metric("Start SOC", f"{results['start_soc']:.2f}%")
-            col2.metric("End SOC", f"{results['end_soc']:.2f}%")
-            col3.metric("Distance", f"{results['total_km']:.2f} km")
-            col4.metric("Payload", f"{results['payload']:.2f}")
-
-            col5, col6, col7, col8 = st.columns(4)
-
             mileage = results["approx_mileage_energy"]
             mileage_display = f"{mileage:.2f}" if mileage else "N/A"
 
-            col5.metric("Energy/km", f"{results['energy_per_km']:.2f}")
-            col6.metric("SOC Used", f"{results['soc_consumed']:.2f}")
-            col7.metric("Avg Current", f"{results['avg_current']:.2f} A")
-            col8.metric("Mileage", mileage_display)
+            # ==============================
+            # 📱 MOBILE LAYOUT (STACKED)
+            # ==============================
+            if st.checkbox("📱 Mobile View", value=True):
+
+                st.subheader("📊 Trip Overview")
+
+                st.metric("Start SOC", f"{results['start_soc']:.2f}%")
+                st.metric("End SOC", f"{results['end_soc']:.2f}%")
+                st.metric("Distance", f"{results['total_km']:.2f} km")
+                st.metric("Payload", f"{results['payload']:.2f}")
+
+                st.metric("Energy/km", f"{results['energy_per_km']:.2f}")
+                st.metric("SOC Used", f"{results['soc_consumed']:.2f}")
+                st.metric("Avg Current", f"{results['avg_current']:.2f} A")
+                st.metric("Mileage", mileage_display)
+
+                st.subheader("⚙ Mode Analysis")
+
+                total = results['total_km']
+
+                eco = results['mode_distance']['Economy']
+                thu = results['mode_distance']['Thunder']
+                rhi = results['mode_distance']['Rhino']
+
+                st.metric("Economy", f"{eco:.2f} km", f"{(eco/total*100 if total else 0):.1f}%")
+                st.metric("Thunder", f"{thu:.2f} km", f"{(thu/total*100 if total else 0):.1f}%")
+                st.metric("Rhino", f"{rhi:.2f} km", f"{(rhi/total*100 if total else 0):.1f}%")
 
             # ==============================
-            # ⚙ MODE ANALYSIS
+            # 💻 DESKTOP LAYOUT
             # ==============================
-            st.subheader("⚙ Mode-wise Analysis")
+            else:
 
-            total = results['total_km']
+                st.subheader("📊 Trip Overview")
 
-            eco_km = results['mode_distance']['Economy']
-            thu_km = results['mode_distance']['Thunder']
-            rhi_km = results['mode_distance']['Rhino']
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Start SOC", f"{results['start_soc']:.2f}%")
+                col2.metric("End SOC", f"{results['end_soc']:.2f}%")
+                col3.metric("Distance", f"{results['total_km']:.2f} km")
+                col4.metric("Payload", f"{results['payload']:.2f}")
 
-            eco = (eco_km / total) * 100 if total else 0
-            thu = (thu_km / total) * 100 if total else 0
-            rhi = (rhi_km / total) * 100 if total else 0
+                col5, col6, col7, col8 = st.columns(4)
+                col5.metric("Energy/km", f"{results['energy_per_km']:.2f}")
+                col6.metric("SOC Used", f"{results['soc_consumed']:.2f}")
+                col7.metric("Avg Current", f"{results['avg_current']:.2f} A")
+                col8.metric("Mileage", mileage_display)
 
-            colA, colB, colC = st.columns(3)
+                st.subheader("⚙ Mode Analysis")
 
-            colA.metric("Economy", f"{eco_km:.2f} km", f"{eco:.1f}%")
-            colB.metric("Thunder", f"{thu_km:.2f} km", f"{thu:.1f}%")
-            colC.metric("Rhino", f"{rhi_km:.2f} km", f"{rhi:.1f}%")
+                total = results['total_km']
+
+                eco = results['mode_distance']['Economy']
+                thu = results['mode_distance']['Thunder']
+                rhi = results['mode_distance']['Rhino']
+
+                colA, colB, colC = st.columns(3)
+                colA.metric("Economy", f"{eco:.2f} km", f"{(eco/total*100 if total else 0):.1f}%")
+                colB.metric("Thunder", f"{thu:.2f} km", f"{(thu/total*100 if total else 0):.1f}%")
+                colC.metric("Rhino", f"{rhi:.2f} km", f"{(rhi/total*100 if total else 0):.1f}%")
 
             # ==============================
-            # 📊 SIMPLE VISUAL (OPTIONAL BUT CLEAN)
-            # ==============================
-            st.subheader("📊 Mode Distribution")
-
-            mode_df = pd.DataFrame({
-                "Mode": ["Economy", "Thunder", "Rhino"],
-                "Distance": [eco_km, thu_km, rhi_km]
-            })
-
-            st.bar_chart(mode_df.set_index("Mode"))
-
-            # ==============================
-            # 📥 DOWNLOAD
+            # DOWNLOAD
             # ==============================
             file = generate_excel_report(results)
 
