@@ -6,43 +6,58 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
-# 🎨 PREMIUM CSS
+# 🎨 PREMIUM DARK + MOBILE CSS
 # ==============================
 st.markdown("""
 <style>
-body {
+
+/* Global */
+html, body, [class*="css"] {
     background-color: #0f172a;
+    color: #e2e8f0;
 }
 
-.metric-card {
-    background-color: #1e293b;
-    padding: 20px;
-    border-radius: 12px;
+/* Cards */
+.card {
+    background: linear-gradient(145deg, #1e293b, #0f172a);
+    padding: 16px;
+    border-radius: 14px;
     text-align: center;
-    color: white;
-    box-shadow: 0px 4px 10px rgba(0,0,0,0.3);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+    margin-bottom: 10px;
 }
 
-.section-title {
-    font-size: 22px;
-    font-weight: bold;
+/* Title */
+.section {
+    font-size: 20px;
+    font-weight: 600;
     margin-top: 20px;
     color: #38bdf8;
 }
 
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .card {
+        padding: 12px;
+        font-size: 14px;
+    }
+}
+
+/* Footer */
 .footer {
     text-align: center;
     padding: 20px;
     color: gray;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # ==============================
 # HEADER
 # ==============================
-st.title("🚗 EV Range Analysis Dashboard")
-st.caption("Developed by Aditya Thangapandi")
+st.title("🚗 EV Range Analytics")
+st.caption("Premium Dashboard • Aditya Thangapandi")
 
 # ==============================
 # SIDEBAR
@@ -55,13 +70,13 @@ vehicle_type = st.sidebar.selectbox(
 )
 
 uploaded_files = st.sidebar.file_uploader(
-    "Upload Excel Files",
+    "Upload Trips",
     type=["xlsx", "xls"],
     accept_multiple_files=True
 )
 
 # ==============================
-# REPORT FUNCTION
+# REPORT
 # ==============================
 def generate_excel_report(results):
     df = pd.DataFrame({
@@ -91,11 +106,34 @@ def generate_excel_report(results):
     return output.getvalue()
 
 # ==============================
+# 🤖 AI SUGGESTIONS
+# ==============================
+def generate_ai_insight(r):
+    insights = []
+
+    if r["energy_per_km"] > 13:
+        insights.append("⚠ High energy consumption — aggressive driving")
+
+    if r["avg_current"] < -40:
+        insights.append("⚡ High current draw — check load or driving style")
+
+    if r["mode_distance"]["Thunder"] > r["mode_distance"]["Economy"]:
+        insights.append("🚀 Heavy Thunder mode usage — reducing range")
+
+    if r["approx_mileage_energy"] and r["approx_mileage_energy"] < 100:
+        insights.append("📉 Low mileage — battery efficiency is low")
+
+    if len(insights) == 0:
+        insights.append("✅ Driving pattern looks efficient")
+
+    return insights
+
+# ==============================
 # MAIN
 # ==============================
 if uploaded_files:
 
-    if st.button("🚀 Run Analysis"):
+    if st.button("🚀 Analyze Trips"):
 
         all_results = []
 
@@ -107,81 +145,86 @@ if uploaded_files:
                     result["file_name"] = file.name
                     all_results.append(result)
 
-        if len(all_results) == 0:
-            st.error("No valid trips detected")
+        if not all_results:
+            st.error("No valid trips found")
         else:
-            st.success("✅ Analysis Complete")
+            st.success("Analysis Complete")
 
             # ==============================
-            # SHOW FIRST TRIP (DETAIL VIEW)
+            # SHOW FIRST TRIP
             # ==============================
-            results = all_results[0]
+            r = all_results[0]
 
-            st.markdown('<p class="section-title">📊 Trip Overview</p>', unsafe_allow_html=True)
+            st.markdown('<div class="section">📊 Trip Overview</div>', unsafe_allow_html=True)
 
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2 = st.columns(2)
 
-            col1.markdown(f'<div class="metric-card">Start SOC<br><b>{results["start_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
-            col2.markdown(f'<div class="metric-card">End SOC<br><b>{results["end_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
-            col3.markdown(f'<div class="metric-card">Distance<br><b>{results["total_km"]:.2f} km</b></div>', unsafe_allow_html=True)
-            col4.markdown(f'<div class="metric-card">Payload<br><b>{results["payload"]:.2f}</b></div>', unsafe_allow_html=True)
+            col1.markdown(f'<div class="card">Start SOC<br><b>{r["start_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
+            col2.markdown(f'<div class="card">End SOC<br><b>{r["end_soc"]:.2f}%</b></div>', unsafe_allow_html=True)
 
-            col5, col6, col7, col8 = st.columns(4)
+            col3, col4 = st.columns(2)
 
-            col5.markdown(f'<div class="metric-card">Energy/km<br><b>{results["energy_per_km"]:.2f}</b></div>', unsafe_allow_html=True)
-            col6.markdown(f'<div class="metric-card">SOC Used<br><b>{results["soc_consumed"]:.2f}</b></div>', unsafe_allow_html=True)
-            col7.markdown(f'<div class="metric-card">Avg Current<br><b>{results["avg_current"]:.2f} A</b></div>', unsafe_allow_html=True)
-            col8.markdown(f'<div class="metric-card">Mileage<br><b>{results["approx_mileage_energy"]:.2f if results["approx_mileage_energy"] else 0}</b></div>', unsafe_allow_html=True)
+            col3.markdown(f'<div class="card">Distance<br><b>{r["total_km"]:.2f} km</b></div>', unsafe_allow_html=True)
+            col4.markdown(f'<div class="card">Payload<br><b>{r["payload"]:.2f}</b></div>', unsafe_allow_html=True)
+
+            mileage = r["approx_mileage_energy"]
+            mileage_display = f"{mileage:.2f}" if mileage else "0.00"
+
+            col5, col6 = st.columns(2)
+
+            col5.markdown(f'<div class="card">Energy/km<br><b>{r["energy_per_km"]:.2f}</b></div>', unsafe_allow_html=True)
+            col6.markdown(f'<div class="card">Mileage<br><b>{mileage_display}</b></div>', unsafe_allow_html=True)
 
             # ==============================
-            # MODE ANALYSIS
+            # MODE
             # ==============================
-            st.markdown('<p class="section-title">⚙ Mode-wise Performance</p>', unsafe_allow_html=True)
+            st.markdown('<div class="section">⚙ Mode Analysis</div>', unsafe_allow_html=True)
 
-            total = results['total_km']
+            total = r['total_km']
 
-            eco_km = results['mode_distance']['Economy']
-            thu_km = results['mode_distance']['Thunder']
-            rhi_km = results['mode_distance']['Rhino']
+            eco_km = r['mode_distance']['Economy']
+            thu_km = r['mode_distance']['Thunder']
+            rhi_km = r['mode_distance']['Rhino']
 
             eco = (eco_km / total) * 100 if total else 0
             thu = (thu_km / total) * 100 if total else 0
             rhi = (rhi_km / total) * 100 if total else 0
 
-            colA, colB, colC = st.columns(3)
+            c1, c2, c3 = st.columns(3)
 
-            colA.markdown(f'<div class="metric-card">Economy<br><b>{eco_km:.2f} km</b><br>{eco:.1f}%</div>', unsafe_allow_html=True)
-            colB.markdown(f'<div class="metric-card">Thunder<br><b>{thu_km:.2f} km</b><br>{thu:.1f}%</div>', unsafe_allow_html=True)
-            colC.markdown(f'<div class="metric-card">Rhino<br><b>{rhi_km:.2f} km</b><br>{rhi:.1f}%</div>', unsafe_allow_html=True)
+            c1.markdown(f'<div class="card">Economy<br><b>{eco_km:.2f} km</b><br>{eco:.1f}%</div>', unsafe_allow_html=True)
+            c2.markdown(f'<div class="card">Thunder<br><b>{thu_km:.2f} km</b><br>{thu:.1f}%</div>', unsafe_allow_html=True)
+            c3.markdown(f'<div class="card">Rhino<br><b>{rhi_km:.2f} km</b><br>{rhi:.1f}%</div>', unsafe_allow_html=True)
 
             # ==============================
-            # MULTI-TRIP COMPARISON
+            # 🤖 AI INSIGHTS
             # ==============================
-            st.markdown('<p class="section-title">📊 Multi-Trip Comparison</p>', unsafe_allow_html=True)
+            st.markdown('<div class="section">🤖 AI Insights</div>', unsafe_allow_html=True)
 
-            comparison_data = []
+            insights = generate_ai_insight(r)
 
-            for r in all_results:
-                comparison_data.append({
-                    "Trip": r["file_name"],
-                    "Distance": round(r["total_km"], 2),
-                    "Energy/km": round(r["energy_per_km"], 2),
-                    "Mileage": round(r["approx_mileage_energy"], 2) if r["approx_mileage_energy"] else 0
-                })
+            for i in insights:
+                st.info(i)
 
-            df_compare = pd.DataFrame(comparison_data)
+            # ==============================
+            # MULTI TRIP
+            # ==============================
+            st.markdown('<div class="section">📊 Multi Trip Comparison</div>', unsafe_allow_html=True)
+
+            df_compare = pd.DataFrame([{
+                "Trip": x["file_name"],
+                "Distance": round(x["total_km"], 2),
+                "Mileage": round(x["approx_mileage_energy"], 2) if x["approx_mileage_energy"] else 0
+            } for x in all_results])
+
             st.dataframe(df_compare, use_container_width=True)
 
             # ==============================
             # DOWNLOAD
             # ==============================
-            file = generate_excel_report(results)
+            file = generate_excel_report(r)
 
-            st.download_button(
-                "📥 Download Report",
-                file,
-                "EV_Report.xlsx"
-            )
+            st.download_button("📥 Download Report", file, "EV_Report.xlsx")
 
 # ==============================
 # FOOTER
