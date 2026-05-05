@@ -6,29 +6,9 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
-# SIMPLE CLEAN CARD STYLE
-# ==============================
-def card(title, value):
-    st.markdown(
-        f"""
-        <div style="
-            background-color:#1e293b;
-            padding:15px;
-            border-radius:10px;
-            text-align:center;
-            border:1px solid #334155;
-        ">
-            <div style="font-size:14px;color:#94a3b8;">{title}</div>
-            <div style="font-size:22px;font-weight:bold;">{value}</div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-# ==============================
 # HEADER
 # ==============================
-st.title("🚗 EV Range Dashboard")
+st.title("🚗 EV Range Analysis Dashboard")
 st.caption("Developed by Aditya Thangapandi")
 
 # ==============================
@@ -41,16 +21,15 @@ vehicle_type = st.sidebar.selectbox(
     ["turbo", "storm", "hiload"]
 )
 
-uploaded_files = st.sidebar.file_uploader(
-    "Upload Trips",
-    type=["xlsx", "xls"],
-    accept_multiple_files=True
+uploaded_file = st.sidebar.file_uploader(
+    "Upload Excel File",
+    type=["xlsx", "xls"]
 )
 
 # ==============================
 # REPORT FUNCTION
 # ==============================
-def generate_excel_report(r):
+def generate_excel_report(results):
     df = pd.DataFrame({
         "Metric": [
             "Start SOC","End SOC","SOC Used","Avg Current",
@@ -59,15 +38,15 @@ def generate_excel_report(r):
             "Economy KM","Thunder KM","Rhino KM"
         ],
         "Value": [
-            r['start_soc'], r['end_soc'],
-            r['soc_consumed'], r['avg_current'],
-            r['total_km'], r['energy_per_km'],
-            r['payload'],
-            r['approx_mileage_soc'],
-            r['approx_mileage_energy'],
-            r['mode_distance']['Economy'],
-            r['mode_distance']['Thunder'],
-            r['mode_distance']['Rhino']
+            results['start_soc'], results['end_soc'],
+            results['soc_consumed'], results['avg_current'],
+            results['total_km'], results['energy_per_km'],
+            results['payload'],
+            results['approx_mileage_soc'],
+            results['approx_mileage_energy'],
+            results['mode_distance']['Economy'],
+            results['mode_distance']['Thunder'],
+            results['mode_distance']['Rhino']
         ]
     })
 
@@ -78,100 +57,88 @@ def generate_excel_report(r):
     return output.getvalue()
 
 # ==============================
-# AI INSIGHTS (SIMPLE + CLEAN)
-# ==============================
-def ai_insight(r):
-    if r["energy_per_km"] > 13:
-        return "⚠ High consumption detected"
-    elif r["avg_current"] < -40:
-        return "⚡ Heavy load usage"
-    else:
-        return "✅ Efficient driving"
-
-# ==============================
 # MAIN
 # ==============================
-if uploaded_files:
+if uploaded_file:
 
-    if st.button("🚀 Analyze"):
+    if st.button("🚀 Run Analysis"):
 
-        results_list = []
+        with st.spinner("Processing..."):
+            results = process_ev_data(uploaded_file, vehicle_type)
 
-        for file in uploaded_files:
-            res = process_ev_data(file, vehicle_type)
-            if res:
-                res["file"] = file.name
-                results_list.append(res)
-
-        if not results_list:
-            st.error("No valid data")
+        if results is None:
+            st.error("❌ No valid trip detected")
         else:
-            r = results_list[0]
-
-            st.subheader("📊 Overview")
-
-            c1, c2, c3, c4 = st.columns(4)
-            with c1: card("Start SOC", f"{r['start_soc']:.2f}%")
-            with c2: card("End SOC", f"{r['end_soc']:.2f}%")
-            with c3: card("Distance", f"{r['total_km']:.2f} km")
-            with c4: card("Payload", f"{r['payload']:.2f}")
-
-            c5, c6, c7, c8 = st.columns(4)
-            mileage = r["approx_mileage_energy"]
-            mileage_disp = f"{mileage:.2f}" if mileage else "0"
-
-            with c5: card("Energy/km", f"{r['energy_per_km']:.2f}")
-            with c6: card("SOC Used", f"{r['soc_consumed']:.2f}")
-            with c7: card("Avg Current", f"{r['avg_current']:.2f}")
-            with c8: card("Mileage", mileage_disp)
+            st.success("✅ Analysis Complete")
 
             # ==============================
-            # MODE
+            # 📊 MAIN METRICS (CLEAN GRID)
             # ==============================
-            st.subheader("⚙ Mode Usage")
+            st.subheader("📊 Trip Overview")
 
-            total = r['total_km']
+            col1, col2, col3, col4 = st.columns(4)
 
-            eco = r['mode_distance']['Economy']
-            thu = r['mode_distance']['Thunder']
-            rhi = r['mode_distance']['Rhino']
+            col1.metric("Start SOC", f"{results['start_soc']:.2f}%")
+            col2.metric("End SOC", f"{results['end_soc']:.2f}%")
+            col3.metric("Distance", f"{results['total_km']:.2f} km")
+            col4.metric("Payload", f"{results['payload']:.2f}")
 
-            c1, c2, c3 = st.columns(3)
+            col5, col6, col7, col8 = st.columns(4)
 
-            with c1:
-                card("Economy", f"{eco:.2f} km ({(eco/total*100 if total else 0):.1f}%)")
-            with c2:
-                card("Thunder", f"{thu:.2f} km ({(thu/total*100 if total else 0):.1f}%)")
-            with c3:
-                card("Rhino", f"{rhi:.2f} km ({(rhi/total*100 if total else 0):.1f}%)")
+            mileage = results["approx_mileage_energy"]
+            mileage_display = f"{mileage:.2f}" if mileage else "N/A"
 
-            # ==============================
-            # AI
-            # ==============================
-            st.subheader("🤖 Insight")
-            st.info(ai_insight(r))
+            col5.metric("Energy/km", f"{results['energy_per_km']:.2f}")
+            col6.metric("SOC Used", f"{results['soc_consumed']:.2f}")
+            col7.metric("Avg Current", f"{results['avg_current']:.2f} A")
+            col8.metric("Mileage", mileage_display)
 
             # ==============================
-            # MULTI TRIP
+            # ⚙ MODE ANALYSIS
             # ==============================
-            st.subheader("📊 Comparison")
+            st.subheader("⚙ Mode-wise Analysis")
 
-            df = pd.DataFrame([{
-                "Trip": x["file"],
-                "Distance": round(x["total_km"], 2),
-                "Mileage": round(x["approx_mileage_energy"], 2) if x["approx_mileage_energy"] else 0
-            } for x in results_list])
+            total = results['total_km']
 
-            st.dataframe(df, use_container_width=True)
+            eco_km = results['mode_distance']['Economy']
+            thu_km = results['mode_distance']['Thunder']
+            rhi_km = results['mode_distance']['Rhino']
+
+            eco = (eco_km / total) * 100 if total else 0
+            thu = (thu_km / total) * 100 if total else 0
+            rhi = (rhi_km / total) * 100 if total else 0
+
+            colA, colB, colC = st.columns(3)
+
+            colA.metric("Economy", f"{eco_km:.2f} km", f"{eco:.1f}%")
+            colB.metric("Thunder", f"{thu_km:.2f} km", f"{thu:.1f}%")
+            colC.metric("Rhino", f"{rhi_km:.2f} km", f"{rhi:.1f}%")
 
             # ==============================
-            # DOWNLOAD
+            # 📊 SIMPLE VISUAL (OPTIONAL BUT CLEAN)
             # ==============================
-            file = generate_excel_report(r)
-            st.download_button("📥 Download Report", file, "EV_Report.xlsx")
+            st.subheader("📊 Mode Distribution")
+
+            mode_df = pd.DataFrame({
+                "Mode": ["Economy", "Thunder", "Rhino"],
+                "Distance": [eco_km, thu_km, rhi_km]
+            })
+
+            st.bar_chart(mode_df.set_index("Mode"))
+
+            # ==============================
+            # 📥 DOWNLOAD
+            # ==============================
+            file = generate_excel_report(results)
+
+            st.download_button(
+                "📥 Download Report",
+                file,
+                "EV_Report.xlsx"
+            )
 
 # ==============================
 # FOOTER
 # ==============================
 st.markdown("---")
-st.caption("EV Analytics • Aditya Thangapandi")
+st.markdown("### 👨‍💻 Developed by Aditya Thangapandi")
