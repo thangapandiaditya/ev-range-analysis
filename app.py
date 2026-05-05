@@ -6,9 +6,62 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
+# ✨ PREMIUM CSS + ANIMATION
+# ==============================
+st.markdown("""
+<style>
+
+/* Smooth fade animation */
+.fade-in {
+    animation: fadeIn 0.8s ease-in-out;
+}
+@keyframes fadeIn {
+    from {opacity: 0; transform: translateY(10px);}
+    to {opacity: 1; transform: translateY(0);}
+}
+
+/* Card */
+.card {
+    padding: 16px;
+    border-radius: 12px;
+    text-align: center;
+    border: 1px solid rgba(128,128,128,0.2);
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+    transition: all 0.25s ease;
+}
+
+/* Hover effect */
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+}
+
+/* Title */
+.card-title {
+    font-size: 13px;
+    opacity: 0.7;
+}
+
+.card-value {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+    .card-value {
+        font-size: 18px;
+    }
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ==============================
 # HEADER
 # ==============================
-st.title("🚗 EV Range Analysis")
+st.markdown("<h2 class='fade-in'>🚗 EV Range Analysis Dashboard</h2>", unsafe_allow_html=True)
 st.caption("Developed by Aditya Thangapandi")
 
 # ==============================
@@ -57,9 +110,15 @@ def generate_excel_report(results):
     return output.getvalue()
 
 # ==============================
-# MOBILE DETECTION
+# CARD FUNCTION
 # ==============================
-is_mobile = st.session_state.get("is_mobile", False)
+def card(title, value):
+    st.markdown(f"""
+    <div class="card fade-in">
+        <div class="card-title">{title}</div>
+        <div class="card-value">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ==============================
 # MAIN
@@ -80,65 +139,41 @@ if uploaded_file:
             mileage_display = f"{mileage:.2f}" if mileage else "N/A"
 
             # ==============================
-            # 📱 MOBILE LAYOUT (STACKED)
+            # 📊 METRICS (AUTO RESPONSIVE)
             # ==============================
-            if st.checkbox("📱 Mobile View", value=True):
+            st.subheader("📊 Trip Overview")
 
-                st.subheader("📊 Trip Overview")
+            cols = st.columns(4)
+            with cols[0]: card("Start SOC", f"{results['start_soc']:.2f}%")
+            with cols[1]: card("End SOC", f"{results['end_soc']:.2f}%")
+            with cols[2]: card("Distance", f"{results['total_km']:.2f} km")
+            with cols[3]: card("Payload", f"{results['payload']:.2f}")
 
-                st.metric("Start SOC", f"{results['start_soc']:.2f}%")
-                st.metric("End SOC", f"{results['end_soc']:.2f}%")
-                st.metric("Distance", f"{results['total_km']:.2f} km")
-                st.metric("Payload", f"{results['payload']:.2f}")
-
-                st.metric("Energy/km", f"{results['energy_per_km']:.2f}")
-                st.metric("SOC Used", f"{results['soc_consumed']:.2f}")
-                st.metric("Avg Current", f"{results['avg_current']:.2f} A")
-                st.metric("Mileage", mileage_display)
-
-                st.subheader("⚙ Mode Analysis")
-
-                total = results['total_km']
-
-                eco = results['mode_distance']['Economy']
-                thu = results['mode_distance']['Thunder']
-                rhi = results['mode_distance']['Rhino']
-
-                st.metric("Economy", f"{eco:.2f} km", f"{(eco/total*100 if total else 0):.1f}%")
-                st.metric("Thunder", f"{thu:.2f} km", f"{(thu/total*100 if total else 0):.1f}%")
-                st.metric("Rhino", f"{rhi:.2f} km", f"{(rhi/total*100 if total else 0):.1f}%")
+            cols = st.columns(4)
+            with cols[0]: card("Energy/km", f"{results['energy_per_km']:.2f}")
+            with cols[1]: card("SOC Used", f"{results['soc_consumed']:.2f}")
+            with cols[2]: card("Avg Current", f"{results['avg_current']:.2f} A")
+            with cols[3]: card("Mileage", mileage_display)
 
             # ==============================
-            # 💻 DESKTOP LAYOUT
+            # ⚙ MODE ANALYSIS
             # ==============================
-            else:
+            st.subheader("⚙ Mode-wise Analysis")
 
-                st.subheader("📊 Trip Overview")
+            total = results['total_km']
 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Start SOC", f"{results['start_soc']:.2f}%")
-                col2.metric("End SOC", f"{results['end_soc']:.2f}%")
-                col3.metric("Distance", f"{results['total_km']:.2f} km")
-                col4.metric("Payload", f"{results['payload']:.2f}")
+            eco = results['mode_distance']['Economy']
+            thu = results['mode_distance']['Thunder']
+            rhi = results['mode_distance']['Rhino']
 
-                col5, col6, col7, col8 = st.columns(4)
-                col5.metric("Energy/km", f"{results['energy_per_km']:.2f}")
-                col6.metric("SOC Used", f"{results['soc_consumed']:.2f}")
-                col7.metric("Avg Current", f"{results['avg_current']:.2f} A")
-                col8.metric("Mileage", mileage_display)
+            eco_p = (eco / total) * 100 if total else 0
+            thu_p = (thu / total) * 100 if total else 0
+            rhi_p = (rhi / total) * 100 if total else 0
 
-                st.subheader("⚙ Mode Analysis")
-
-                total = results['total_km']
-
-                eco = results['mode_distance']['Economy']
-                thu = results['mode_distance']['Thunder']
-                rhi = results['mode_distance']['Rhino']
-
-                colA, colB, colC = st.columns(3)
-                colA.metric("Economy", f"{eco:.2f} km", f"{(eco/total*100 if total else 0):.1f}%")
-                colB.metric("Thunder", f"{thu:.2f} km", f"{(thu/total*100 if total else 0):.1f}%")
-                colC.metric("Rhino", f"{rhi:.2f} km", f"{(rhi/total*100 if total else 0):.1f}%")
+            cols = st.columns(3)
+            with cols[0]: card("Economy", f"{eco:.2f} km ({eco_p:.1f}%)")
+            with cols[1]: card("Thunder", f"{thu:.2f} km ({thu_p:.1f}%)")
+            with cols[2]: card("Rhino", f"{rhi:.2f} km ({rhi_p:.1f}%)")
 
             # ==============================
             # DOWNLOAD
@@ -155,4 +190,4 @@ if uploaded_file:
 # FOOTER
 # ==============================
 st.markdown("---")
-st.markdown("### 👨‍💻 Developed by Aditya Thangapandi")
+st.markdown("<div style='text-align:center;'>👨‍💻 Developed by Aditya Thangapandi</div>", unsafe_allow_html=True)
