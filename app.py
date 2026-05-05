@@ -6,53 +6,72 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
-# ✨ PREMIUM CSS + ANIMATION
+# 🎨 PREMIUM CSS + ANIMATIONS
 # ==============================
 st.markdown("""
 <style>
 
-/* Smooth fade animation */
-.fade-in {
-    animation: fadeIn 0.8s ease-in-out;
+/* Fade animation */
+.fade {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fadeUp 0.6s forwards;
 }
-@keyframes fadeIn {
-    from {opacity: 0; transform: translateY(10px);}
-    to {opacity: 1; transform: translateY(0);}
+@keyframes fadeUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
-/* Card */
+/* Card style */
 .card {
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.15);
     text-align: center;
-    border: 1px solid rgba(128,128,128,0.2);
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(10px);
-    transition: all 0.25s ease;
+    transition: all 0.3s ease;
 }
 
-/* Hover effect */
+/* Hover animation */
 .card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+    transform: translateY(-5px) scale(1.02);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
 }
 
-/* Title */
+/* Text */
 .card-title {
     font-size: 13px;
     opacity: 0.7;
 }
-
 .card-value {
     font-size: 22px;
     font-weight: bold;
 }
 
-/* Mobile responsive */
-@media (max-width: 768px) {
-    .card-value {
-        font-size: 18px;
-    }
+/* Progress bar */
+.bar {
+    height: 6px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.1);
+    margin-top: 6px;
+    overflow: hidden;
+}
+.bar-fill {
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #38bdf8, #6366f1);
+    animation: fillBar 1s forwards;
+}
+@keyframes fillBar {
+    from {width:0%;}
+}
+
+/* Mobile */
+@media (max-width:768px){
+    .card-value {font-size:18px;}
 }
 
 </style>
@@ -61,7 +80,7 @@ st.markdown("""
 # ==============================
 # HEADER
 # ==============================
-st.markdown("<h2 class='fade-in'>🚗 EV Range Analysis Dashboard</h2>", unsafe_allow_html=True)
+st.markdown("<h2 class='fade'>🚗 EV Range Analysis Dashboard</h2>", unsafe_allow_html=True)
 st.caption("Developed by Aditya Thangapandi")
 
 # ==============================
@@ -114,9 +133,24 @@ def generate_excel_report(results):
 # ==============================
 def card(title, value):
     st.markdown(f"""
-    <div class="card fade-in">
+    <div class="card fade">
         <div class="card-title">{title}</div>
         <div class="card-value">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ==============================
+# MODE CARD
+# ==============================
+def mode_card(title, km, percent):
+    st.markdown(f"""
+    <div class="card fade">
+        <div class="card-title">{title}</div>
+        <div class="card-value">{km:.2f} km</div>
+        <div style="font-size:12px;opacity:0.7;">{percent:.1f}%</div>
+        <div class="bar">
+            <div class="bar-fill" style="width:{percent}%"></div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -139,7 +173,7 @@ if uploaded_file:
             mileage_display = f"{mileage:.2f}" if mileage else "N/A"
 
             # ==============================
-            # 📊 METRICS (AUTO RESPONSIVE)
+            # MAIN METRICS
             # ==============================
             st.subheader("📊 Trip Overview")
 
@@ -156,7 +190,7 @@ if uploaded_file:
             with cols[3]: card("Mileage", mileage_display)
 
             # ==============================
-            # ⚙ MODE ANALYSIS
+            # MODE ANALYSIS
             # ==============================
             st.subheader("⚙ Mode-wise Analysis")
 
@@ -171,9 +205,9 @@ if uploaded_file:
             rhi_p = (rhi / total) * 100 if total else 0
 
             cols = st.columns(3)
-            with cols[0]: card("Economy", f"{eco:.2f} km ({eco_p:.1f}%)")
-            with cols[1]: card("Thunder", f"{thu:.2f} km ({thu_p:.1f}%)")
-            with cols[2]: card("Rhino", f"{rhi:.2f} km ({rhi_p:.1f}%)")
+            with cols[0]: mode_card("Economy", eco, eco_p)
+            with cols[1]: mode_card("Thunder", thu, thu_p)
+            with cols[2]: mode_card("Rhino", rhi, rhi_p)
 
             # ==============================
             # DOWNLOAD
