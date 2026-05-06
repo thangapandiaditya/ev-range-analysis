@@ -9,10 +9,10 @@ def process_ev_data(file, vehicle_type):
     # ==============================
     df.columns = df.columns.str.strip().str.lower()
 
-    print("Detected Columns:", df.columns.tolist())  # DEBUG
+    print("Detected Columns:", df.columns.tolist())
 
     # ==============================
-    # SAFE COLUMN DETECTION
+    # COLUMN DETECTION
     # ==============================
     def get_col(possible):
         for col in df.columns:
@@ -39,14 +39,14 @@ def process_ev_data(file, vehicle_type):
 Detected columns:
 {df.columns.tolist()}
 
-👉 Make sure your file has:
+👉 Required:
 - SOC
 - Current
 - ODO
 """)
 
     # ==============================
-    # RENAME SAFELY
+    # RENAME
     # ==============================
     df = df.rename(columns={
         soc_col: "batteryStateOfCharge",
@@ -105,9 +105,6 @@ Detected columns:
     return trips
 
 
-# ==============================
-# CALCULATE TRIP
-# ==============================
 def calculate_trip(df, vehicle_type):
 
     start_soc = df.iloc[0]['batteryStateOfCharge']
