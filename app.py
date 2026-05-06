@@ -6,23 +6,14 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
-# PREMIUM UI
+# UI
 # ==============================
 st.markdown("""
 <style>
-.fade {
-    animation: fadeUp 0.6s ease;
-}
-@keyframes fadeUp {
-    from {opacity:0; transform:translateY(10px);}
-    to {opacity:1; transform:translateY(0);}
-}
-
 .card {
-    padding:16px;
+    padding:15px;
     border-radius:12px;
     background:rgba(255,255,255,0.05);
-    backdrop-filter:blur(10px);
     border:1px solid rgba(255,255,255,0.1);
     text-align:center;
     margin-bottom:10px;
@@ -31,13 +22,9 @@ st.markdown("""
     transform:scale(1.03);
     transition:0.3s;
 }
-
 </style>
 """, unsafe_allow_html=True)
 
-# ==============================
-# HEADER
-# ==============================
 st.title("🚗 EV Range Analysis")
 st.caption("Developed by Aditya Thangapandi")
 
@@ -52,15 +39,36 @@ vehicle_type = st.sidebar.selectbox(
 uploaded_file = st.sidebar.file_uploader("Upload Excel", type=["xlsx"])
 
 # ==============================
-# CARD FUNCTION
+# EXPORT FUNCTION
 # ==============================
-def card(title, value):
-    st.markdown(f"""
-    <div class="card fade">
-        <b>{title}</b><br>
-        <h3>{value}</h3>
-    </div>
-    """, unsafe_allow_html=True)
+def export_all_trips(trips):
+
+    data = []
+
+    for i, t in enumerate(trips):
+        data.append({
+            "Trip": f"Trip {i+1}",
+            "Start Time": t["start_time"],
+            "End Time": t["end_time"],
+            "Start SOC": round(t["start_soc"], 2),
+            "End SOC": round(t["end_soc"], 2),
+            "SOC Used": round(t["soc_used"], 2),
+            "Distance (km)": round(t["distance"], 2),
+            "Energy/km": round(t["energy_per_km"], 2),
+            "Avg Current": round(t["avg_current"], 2),
+            "Payload": round(t["payload"], 2),
+            "Economy KM": round(t["mode"]["eco"], 2),
+            "Thunder KM": round(t["mode"]["thu"], 2),
+            "Rhino KM": round(t["mode"]["rhi"], 2)
+        })
+
+    df = pd.DataFrame(data)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+
+    return output.getvalue()
 
 # ==============================
 # MAIN
@@ -69,7 +77,11 @@ if uploaded_file:
 
     if st.button("Run Analysis"):
 
-        trips = process_ev_data(uploaded_file, vehicle_type)
+        try:
+            trips = process_ev_data(uploaded_file, vehicle_type)
+        except Exception as e:
+            st.error(e)
+            st.stop()
 
         if not trips:
             st.error("No trips detected")
@@ -86,13 +98,11 @@ if uploaded_file:
                     "Trip": f"Trip {i+1}",
                     "Start": t["start_time"],
                     "End": t["end_time"],
-                    "SOC Used": round(t["soc_used"], 2),
                     "Distance": round(t["distance"], 2),
-                    "Efficiency": round(t["energy_per_km"], 2)
+                    "SOC Used": round(t["soc_used"], 2)
                 })
 
-            df = pd.DataFrame(timeline)
-            st.dataframe(df, use_container_width=True)
+            st.dataframe(pd.DataFrame(timeline), use_container_width=True)
 
             # ==============================
             # SELECT TRIP
@@ -103,33 +113,40 @@ if uploaded_file:
                 format_func=lambda x: f"Trip {x+1}"
             )
 
-            trip = trips[index]
-
-            st.subheader(f"📊 Trip {index+1} Details")
+            t = trips[index]
 
             col1, col2, col3, col4 = st.columns(4)
 
-            col1.metric("Distance", f"{trip['distance']:.2f} km")
-            col2.metric("SOC Used", f"{trip['soc_used']:.2f}")
-            col3.metric("Efficiency", f"{trip['energy_per_km']:.2f}")
-            col4.metric("Avg Current", f"{trip['avg_current']:.2f}")
+            col1.metric("Distance", f"{t['distance']:.2f} km")
+            col2.metric("SOC Used", f"{t['soc_used']:.2f}")
+            col3.metric("Efficiency", f"{t['energy_per_km']:.2f}")
+            col4.metric("Avg Current", f"{t['avg_current']:.2f}")
 
             # ==============================
             # MODE
             # ==============================
-            st.subheader("⚙ Mode Distribution")
+            total = t['distance']
 
-            total = trip['distance']
-
-            eco = trip['mode']['eco']
-            thu = trip['mode']['thu']
-            rhi = trip['mode']['rhi']
+            eco = t['mode']['eco']
+            thu = t['mode']['thu']
+            rhi = t['mode']['rhi']
 
             colA, colB, colC = st.columns(3)
 
             colA.metric("Economy", f"{eco:.2f}", f"{(eco/total*100 if total else 0):.1f}%")
             colB.metric("Thunder", f"{thu:.2f}", f"{(thu/total*100 if total else 0):.1f}%")
             colC.metric("Rhino", f"{rhi:.2f}", f"{(rhi/total*100 if total else 0):.1f}%")
+
+            # ==============================
+            # DOWNLOAD
+            # ==============================
+            file = export_all_trips(trips)
+
+            st.download_button(
+                "📥 Download All Trips Report",
+                file,
+                "All_Trips_Report.xlsx"
+            )
 
 # ==============================
 # FOOTER
