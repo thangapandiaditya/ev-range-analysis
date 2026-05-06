@@ -1,136 +1,116 @@
 import pandas as pd
-import streamlit as st
 
-@st.cache_data
-def process_ev_data(file, vehicle_type="turbo"):
+# ==============================
+# MAIN FUNCTION (MULTI TRIP)
+# ==============================
+def process_ev_data(file, vehicle_type):
 
-    # ==============================
-    # READ ONLY REQUIRED COLUMNS
-    # ==============================
-    columns_needed = [
-        'batteryCurrent',
-        'batteryStateOfCharge',
-        'odometer',
-        'batteryAvailableEnergy',
-        'batteryTotalVoltage',
-        'vehicleStatus'
-    ]
+    df = pd.read_excel(file)
 
-    df = pd.read_excel(file, usecols=columns_needed)
-    df = df.reset_index(drop=True)
+    # 🔁 Rename columns (adjust if needed)
+    df = df.rename(columns={
+        'SOC': 'batteryStateOfCharge',
+        'Current': 'packCurrent',
+        'Voltage': 'packVoltage',
+        'Odo': 'odometer',
+        'Energy': 'batteryEnergy',
+        'Mode': 'driveMode',
+        'Time': 'timestamp'
+    })
 
-    # ==============================
-    # VEHICLE CONFIG
-    # ==============================
-    VEHICLE_PAYLOAD_FACTOR = {
-        "turbo": 9.0909,
-        "storm": 11.53846153846154,
-        "hiload": 7.45
-    }
+    df = df.dropna().reset_index(drop=True)
+
+    trips = []
+    in_trip = False
 
     # ==============================
-    # PARAMETERS
+    # DETECT MULTIPLE DISCHARGE
     # ==============================
-    MIN_CURRENT = -0.5
-    CHARGE_THRESHOLD = 5
-    CHARGE_WINDOW = 30
-
-    # ==============================
-    # FIND TRIP START
-    # ==============================
-    start_index = None
-
     for i in range(1, len(df)):
-        current = df.loc[i, 'batteryCurrent']
-        odo_diff = df.loc[i, 'odometer'] - df.loc[i-1, 'odometer']
 
-        if current < MIN_CURRENT and odo_diff > 0:
+        current = df.loc[i, 'packCurrent']
+
+        # START TRIP
+        if not in_trip and current < 0:
+            in_trip = True
             start_index = i
-            break
 
-    if start_index is None:
-        return None
+        # END TRIP
+        elif in_trip and current >= 0:
+            end_index = i
 
-    # BACKTRACK (include full start)
-    for j in range(start_index, 0, -1):
-        if df.loc[j, 'batteryStateOfCharge'] >= df.loc[start_index, 'batteryStateOfCharge']:
-            start_index = j
-        else:
-            break
+            trip_df = df.loc[start_index:end_index].copy()
 
-    # ==============================
-    # FIND TRIP END
-    # ==============================
-    end_index = len(df) - 1
+            if len(trip_df) > 20:  # ignore noise
+                trip = calculate_trip(trip_df, vehicle_type)
+                if trip:
+                    trips.append(trip)
 
-    for i in range(start_index, len(df) - CHARGE_WINDOW):
-        window = df.loc[i:i+CHARGE_WINDOW]
+            in_trip = False
 
-        if (window['batteryCurrent'] > CHARGE_THRESHOLD).sum() > CHARGE_WINDOW * 0.7:
-            end_index = i - 1
-            break
+    return trips
 
-    # ==============================
-    # EXTRACT TRIP
-    # ==============================
-    trip = df.loc[start_index:end_index].reset_index(drop=True)
 
-    # ==============================
-    # CALCULATIONS
-    # ==============================
-    start_soc = trip['batteryStateOfCharge'].iloc[0]
-    end_soc = trip['batteryStateOfCharge'].iloc[-1]
-    soc_consumed = start_soc - end_soc
+# ==============================
+# SINGLE TRIP CALCULATION
+# ==============================
+def calculate_trip(df, vehicle_type):
 
-    start_odo = trip['odometer'].iloc[0]
-    end_odo = trip['odometer'].iloc[-1]
-    total_km = end_odo - start_odo
+    start_soc = df.iloc[0]['batteryStateOfCharge']
+    end_soc = df.iloc[-1]['batteryStateOfCharge']
+    soc_used = start_soc - end_soc
 
-    start_energy = trip['batteryAvailableEnergy'].iloc[0]
-    end_energy = trip['batteryAvailableEnergy'].iloc[-1]
-    energy_consumed = start_energy - end_energy
+    start_odo = df.iloc[0]['odometer']
+    end_odo = df.iloc[-1]['odometer']
+    distance = end_odo - start_odo
 
-    energy_per_km = energy_consumed / total_km if total_km > 0 else 0
+    start_energy = df.iloc[0]['batteryEnergy']
+    end_energy = df.iloc[-1]['batteryEnergy']
+    energy_used = start_energy - end_energy
 
-    avg_current = trip['batteryCurrent'].mean()
+    avg_current = df['packCurrent'].mean()
+
+    energy_per_km = energy_used / distance if distance > 0 else 0
+
+    avg_voltage = df['packVoltage'].mean()
 
     # ==============================
     # PAYLOAD
     # ==============================
-    factor = VEHICLE_PAYLOAD_FACTOR.get(vehicle_type.lower(), 9.0909)
-    payload = factor * energy_per_km
+    payload_map = {
+        "turbo": 14,
+        "storm": 11.538,
+        "hiload": 7.45
+    }
+
+    payload = energy_per_km * payload_map.get(vehicle_type, 14)
 
     # ==============================
     # MODE DISTANCE
     # ==============================
-    mode_distance = {'Economy': 0, 'Thunder': 0, 'Rhino': 0}
-
-    for i in range(1, len(trip)):
-        mode = str(trip.loc[i-1, 'vehicleStatus']).lower()
-        dist = trip.loc[i, 'odometer'] - trip.loc[i-1, 'odometer']
-
-        if "eco" in mode:
-            mode_distance['Economy'] += dist
-        elif "thunder" in mode:
-            mode_distance['Thunder'] += dist
-        elif "rhino" in mode:
-            mode_distance['Rhino'] += dist
+    eco = df[df['driveMode'] == 'Economy']['odometer'].diff().sum()
+    thu = df[df['driveMode'] == 'Thunder']['odometer'].diff().sum()
+    rhi = df[df['driveMode'] == 'Rhino']['odometer'].diff().sum()
 
     # ==============================
-    # MILEAGE
+    # TIME
     # ==============================
-    approx_mileage_soc = (total_km / soc_consumed) * 100 if soc_consumed > 0 else None
-    approx_mileage_energy = (start_energy / energy_per_km) if energy_per_km > 0 else None
+    start_time = df.iloc[0]['timestamp']
+    end_time = df.iloc[-1]['timestamp']
 
     return {
+        "start_time": start_time,
+        "end_time": end_time,
         "start_soc": start_soc,
         "end_soc": end_soc,
-        "soc_consumed": soc_consumed,
-        "avg_current": avg_current,
-        "total_km": total_km,
+        "soc_used": soc_used,
+        "distance": distance,
         "energy_per_km": energy_per_km,
         "payload": payload,
-        "approx_mileage_soc": approx_mileage_soc,
-        "approx_mileage_energy": approx_mileage_energy,
-        "mode_distance": mode_distance
+        "avg_current": avg_current,
+        "mode": {
+            "eco": eco if eco else 0,
+            "thu": thu if thu else 0,
+            "rhi": rhi if rhi else 0
+        }
     }
