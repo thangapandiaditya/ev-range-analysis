@@ -1,13 +1,9 @@
 import pandas as pd
 
-# ==============================
-# MAIN FUNCTION (MULTI TRIP)
-# ==============================
 def process_ev_data(file, vehicle_type):
 
     df = pd.read_excel(file)
 
-    # 🔁 Rename columns (adjust if needed)
     df = df.rename(columns={
         'SOC': 'batteryStateOfCharge',
         'Current': 'packCurrent',
@@ -22,37 +18,55 @@ def process_ev_data(file, vehicle_type):
 
     trips = []
     in_trip = False
+    start_index = 0
 
-    # ==============================
-    # DETECT MULTIPLE DISCHARGE
-    # ==============================
+    # 🔥 thresholds (tune if needed)
+    START_THRESHOLD = -2
+    END_THRESHOLD = -1
+
     for i in range(1, len(df)):
 
         current = df.loc[i, 'packCurrent']
 
+        # ==============================
         # START TRIP
-        if not in_trip and current < 0:
+        # ==============================
+        if not in_trip and current < START_THRESHOLD:
             in_trip = True
             start_index = i
 
+        # ==============================
         # END TRIP
-        elif in_trip and current >= 0:
+        # ==============================
+        elif in_trip and current > END_THRESHOLD:
+
             end_index = i
 
             trip_df = df.loc[start_index:end_index].copy()
 
-            if len(trip_df) > 20:  # ignore noise
+            # ignore very small trips
+            if len(trip_df) > 30:
                 trip = calculate_trip(trip_df, vehicle_type)
                 if trip:
                     trips.append(trip)
 
             in_trip = False
 
+    # ==============================
+    # HANDLE LAST TRIP (IMPORTANT)
+    # ==============================
+    if in_trip:
+        trip_df = df.loc[start_index:].copy()
+        if len(trip_df) > 30:
+            trip = calculate_trip(trip_df, vehicle_type)
+            if trip:
+                trips.append(trip)
+
     return trips
 
 
 # ==============================
-# SINGLE TRIP CALCULATION
+# CALCULATE TRIP
 # ==============================
 def calculate_trip(df, vehicle_type):
 
@@ -64,19 +78,16 @@ def calculate_trip(df, vehicle_type):
     end_odo = df.iloc[-1]['odometer']
     distance = end_odo - start_odo
 
+    if distance < 1:  # 🚨 ignore fake trips
+        return None
+
     start_energy = df.iloc[0]['batteryEnergy']
     end_energy = df.iloc[-1]['batteryEnergy']
     energy_used = start_energy - end_energy
 
     avg_current = df['packCurrent'].mean()
-
     energy_per_km = energy_used / distance if distance > 0 else 0
 
-    avg_voltage = df['packVoltage'].mean()
-
-    # ==============================
-    # PAYLOAD
-    # ==============================
     payload_map = {
         "turbo": 14,
         "storm": 11.538,
@@ -85,16 +96,10 @@ def calculate_trip(df, vehicle_type):
 
     payload = energy_per_km * payload_map.get(vehicle_type, 14)
 
-    # ==============================
-    # MODE DISTANCE
-    # ==============================
     eco = df[df['driveMode'] == 'Economy']['odometer'].diff().sum()
     thu = df[df['driveMode'] == 'Thunder']['odometer'].diff().sum()
     rhi = df[df['driveMode'] == 'Rhino']['odometer'].diff().sum()
 
-    # ==============================
-    # TIME
-    # ==============================
     start_time = df.iloc[0]['timestamp']
     end_time = df.iloc[-1]['timestamp']
 
