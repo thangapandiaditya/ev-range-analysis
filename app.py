@@ -6,33 +6,41 @@ from io import BytesIO
 st.set_page_config(page_title="EV Dashboard", layout="wide")
 
 # ==============================
-# UI
+# PREMIUM UI
 # ==============================
 st.markdown("""
 <style>
 .card {
-    padding:15px;
-    border-radius:12px;
-    background:rgba(255,255,255,0.05);
-    border:1px solid rgba(255,255,255,0.1);
+    padding:16px;
+    border-radius:14px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.15);
     text-align:center;
-    margin-bottom:10px;
+    transition:0.3s;
 }
 .card:hover {
-    transform:scale(1.03);
-    transition:0.3s;
+    transform: translateY(-5px) scale(1.02);
+}
+.card-title {
+    font-size:13px;
+    opacity:0.7;
+}
+.card-value {
+    font-size:22px;
+    font-weight:bold;
 }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🚗 EV Range Analysis")
+st.title("🚗 EV Range Analysis Dashboard")
 st.caption("Developed by Aditya Thangapandi")
 
 # ==============================
 # SIDEBAR
 # ==============================
 vehicle_type = st.sidebar.selectbox(
-    "Vehicle",
+    "Select Vehicle",
     ["turbo", "storm", "hiload"]
 )
 
@@ -48,18 +56,16 @@ def export_all_trips(trips):
     for i, t in enumerate(trips):
         data.append({
             "Trip": f"Trip {i+1}",
-            "Start Time": t["start_time"],
-            "End Time": t["end_time"],
-            "Start SOC": round(t["start_soc"], 2),
-            "End SOC": round(t["end_soc"], 2),
-            "SOC Used": round(t["soc_used"], 2),
-            "Distance (km)": round(t["distance"], 2),
-            "Energy/km": round(t["energy_per_km"], 2),
-            "Avg Current": round(t["avg_current"], 2),
-            "Payload": round(t["payload"], 2),
-            "Economy KM": round(t["mode"]["eco"], 2),
-            "Thunder KM": round(t["mode"]["thu"], 2),
-            "Rhino KM": round(t["mode"]["rhi"], 2)
+            "Start SOC": t["start_soc"],
+            "End SOC": t["end_soc"],
+            "SOC Used": t["soc_consumed"],
+            "Distance": t["total_km"],
+            "Energy/km": t["energy_per_km"],
+            "Avg Current": t["avg_current"],
+            "Payload": t["payload"],
+            "Economy KM": t["mode_distance"]["Economy"],
+            "Thunder KM": t["mode_distance"]["Thunder"],
+            "Rhino KM": t["mode_distance"]["Rhino"]
         })
 
     df = pd.DataFrame(data)
@@ -71,42 +77,31 @@ def export_all_trips(trips):
     return output.getvalue()
 
 # ==============================
+# CARD UI
+# ==============================
+def card(title, value):
+    st.markdown(f"""
+    <div class="card">
+        <div class="card-title">{title}</div>
+        <div class="card-value">{value}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ==============================
 # MAIN
 # ==============================
 if uploaded_file:
 
-    if st.button("Run Analysis"):
+    if st.button("🚀 Run Analysis"):
 
-        try:
-            trips = process_ev_data(uploaded_file, vehicle_type)
-        except Exception as e:
-            st.error(e)
-            st.stop()
+        trips = process_ev_data(uploaded_file, vehicle_type)
 
         if not trips:
-            st.error("No trips detected")
+            st.error("❌ No trips detected")
         else:
+            st.success(f"✅ {len(trips)} Trips Detected")
 
-            # ==============================
-            # TIMELINE
-            # ==============================
-            st.subheader("🕒 Trip Timeline")
-
-            timeline = []
-            for i, t in enumerate(trips):
-                timeline.append({
-                    "Trip": f"Trip {i+1}",
-                    "Start": t["start_time"],
-                    "End": t["end_time"],
-                    "Distance": round(t["distance"], 2),
-                    "SOC Used": round(t["soc_used"], 2)
-                })
-
-            st.dataframe(pd.DataFrame(timeline), use_container_width=True)
-
-            # ==============================
             # SELECT TRIP
-            # ==============================
             index = st.selectbox(
                 "Select Trip",
                 range(len(trips)),
@@ -115,27 +110,35 @@ if uploaded_file:
 
             t = trips[index]
 
-            col1, col2, col3, col4 = st.columns(4)
+            # ==============================
+            # METRICS
+            # ==============================
+            cols = st.columns(4)
+            with cols[0]: card("Start SOC", f"{t['start_soc']:.2f}%")
+            with cols[1]: card("End SOC", f"{t['end_soc']:.2f}%")
+            with cols[2]: card("Distance", f"{t['total_km']:.2f} km")
+            with cols[3]: card("Payload", f"{t['payload']:.2f}")
 
-            col1.metric("Distance", f"{t['distance']:.2f} km")
-            col2.metric("SOC Used", f"{t['soc_used']:.2f}")
-            col3.metric("Efficiency", f"{t['energy_per_km']:.2f}")
-            col4.metric("Avg Current", f"{t['avg_current']:.2f}")
+            cols = st.columns(4)
+            with cols[0]: card("Energy/km", f"{t['energy_per_km']:.2f}")
+            with cols[1]: card("SOC Used", f"{t['soc_consumed']:.2f}")
+            with cols[2]: card("Avg Current", f"{t['avg_current']:.2f} A")
+            mileage = t["approx_mileage_energy"]
+            with cols[3]: card("Mileage", f"{mileage:.2f}" if mileage else "N/A")
 
             # ==============================
             # MODE
             # ==============================
-            total = t['distance']
+            total = t['total_km']
 
-            eco = t['mode']['eco']
-            thu = t['mode']['thu']
-            rhi = t['mode']['rhi']
+            eco = t['mode_distance']['Economy']
+            thu = t['mode_distance']['Thunder']
+            rhi = t['mode_distance']['Rhino']
 
-            colA, colB, colC = st.columns(3)
-
-            colA.metric("Economy", f"{eco:.2f}", f"{(eco/total*100 if total else 0):.1f}%")
-            colB.metric("Thunder", f"{thu:.2f}", f"{(thu/total*100 if total else 0):.1f}%")
-            colC.metric("Rhino", f"{rhi:.2f}", f"{(rhi/total*100 if total else 0):.1f}%")
+            cols = st.columns(3)
+            with cols[0]: card("Economy", f"{eco:.2f} km ({eco/total*100:.1f}%)" if total else "0")
+            with cols[1]: card("Thunder", f"{thu:.2f} km ({thu/total*100:.1f}%)" if total else "0")
+            with cols[2]: card("Rhino", f"{rhi:.2f} km ({rhi/total*100:.1f}%)" if total else "0")
 
             # ==============================
             # DOWNLOAD
@@ -152,4 +155,4 @@ if uploaded_file:
 # FOOTER
 # ==============================
 st.markdown("---")
-st.markdown("Developed by Aditya Thangapandi")
+st.markdown("👨‍💻 Developed by Aditya Thangapandi")
