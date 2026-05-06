@@ -101,7 +101,6 @@ if uploaded_file:
         else:
             st.success(f"✅ {len(trips)} Trips Detected")
 
-            # SELECT TRIP
             index = st.selectbox(
                 "Select Trip",
                 range(len(trips)),
@@ -110,9 +109,6 @@ if uploaded_file:
 
             t = trips[index]
 
-            # ==============================
-            # METRICS
-            # ==============================
             cols = st.columns(4)
             with cols[0]: card("Start SOC", f"{t['start_soc']:.2f}%")
             with cols[1]: card("End SOC", f"{t['end_soc']:.2f}%")
@@ -126,9 +122,6 @@ if uploaded_file:
             mileage = t["approx_mileage_energy"]
             with cols[3]: card("Mileage", f"{mileage:.2f}" if mileage else "N/A")
 
-            # ==============================
-            # MODE
-            # ==============================
             total = t['total_km']
 
             eco = t['mode_distance']['Economy']
@@ -140,9 +133,6 @@ if uploaded_file:
             with cols[1]: card("Thunder", f"{thu:.2f} km ({thu/total*100:.1f}%)" if total else "0")
             with cols[2]: card("Rhino", f"{rhi:.2f} km ({rhi/total*100:.1f}%)" if total else "0")
 
-            # ==============================
-            # DOWNLOAD
-            # ==============================
             file = export_all_trips(trips)
 
             st.download_button(
