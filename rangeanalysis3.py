@@ -7,6 +7,9 @@ def process_ev_data(file, vehicle_type="turbo"):
     df = pd.read_excel(file)
     df = df.reset_index(drop=True)
 
+    # ==============================
+    # CONFIG
+    # ==============================
     VEHICLE_PAYLOAD_FACTOR = {
         "turbo": 9.0909,
         "storm": 11.53846153846154,
@@ -14,58 +17,53 @@ def process_ev_data(file, vehicle_type="turbo"):
     }
 
     trips = []
-    in_trip = False
+    start_index = None
 
-    MIN_CURRENT = -0.5
+    # ==============================
+    # PARAMETERS (RELAXED)
+    # ==============================
     MIN_MOVEMENT = 0.01
+    MIN_SOC_CHANGE = 0.1
 
     for i in range(1, len(df)):
 
-        current = df.loc[i, 'batteryCurrent']
         odo_diff = df.loc[i, 'odometer'] - df.loc[i-1, 'odometer']
-
         soc_now = df.loc[i, 'batteryStateOfCharge']
         soc_prev = df.loc[i-1, 'batteryStateOfCharge']
 
+        moving = odo_diff > MIN_MOVEMENT
+        soc_dropping = soc_now < soc_prev - MIN_SOC_CHANGE
+
         # ==============================
-        # START TRIP (DISCHARGE)
+        # START TRIP
         # ==============================
-        if not in_trip:
-            if current < MIN_CURRENT and odo_diff > MIN_MOVEMENT:
+        if start_index is None:
+            if moving:
                 start_index = i
-                in_trip = True
 
         # ==============================
         # END TRIP
         # ==============================
         else:
+            stopped = odo_diff < 0.001
+            soc_rising = soc_now > soc_prev + MIN_SOC_CHANGE
 
-            # condition 1: charging starts
-            charging = current > 1
-
-            # condition 2: no movement
-            stopped = abs(odo_diff) < MIN_MOVEMENT
-
-            # condition 3: SOC increasing
-            soc_up = soc_now > soc_prev
-
-            if charging or (stopped and soc_up):
+            if stopped or soc_rising:
 
                 end_index = i - 1
-
                 trip_df = df.loc[start_index:end_index].reset_index(drop=True)
 
-                if len(trip_df) > 30:
+                if len(trip_df) > 20:
                     result = calculate_trip(trip_df, vehicle_type)
                     if result:
                         trips.append(result)
 
-                in_trip = False
+                start_index = None
 
     # LAST TRIP
-    if in_trip:
+    if start_index is not None:
         trip_df = df.loc[start_index:].reset_index(drop=True)
-        if len(trip_df) > 30:
+        if len(trip_df) > 20:
             result = calculate_trip(trip_df, vehicle_type)
             if result:
                 trips.append(result)
@@ -83,7 +81,7 @@ def calculate_trip(trip, vehicle_type):
     end_odo = trip['odometer'].iloc[-1]
     total_km = end_odo - start_odo
 
-    if total_km < 1:
+    if total_km < 0.5:
         return None
 
     start_energy = trip['batteryAvailableEnergy'].iloc[0]
@@ -101,6 +99,7 @@ def calculate_trip(trip, vehicle_type):
 
     payload = VEHICLE_PAYLOAD_FACTOR.get(vehicle_type.lower(), 9.0909) * energy_per_km
 
+    # MODE DISTANCE
     mode_distance = {'Economy': 0, 'Thunder': 0, 'Rhino': 0}
 
     for i in range(1, len(trip)):
