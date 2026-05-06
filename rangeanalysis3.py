@@ -1,8 +1,5 @@
 import pandas as pd
 
-# ==============================
-# MAIN FUNCTION
-# ==============================
 def process_ev_data(file, vehicle_type):
 
     df = pd.read_excel(file)
@@ -12,53 +9,59 @@ def process_ev_data(file, vehicle_type):
     # ==============================
     df.columns = df.columns.str.strip().str.lower()
 
-    # ==============================
-    # AUTO DETECT COLUMNS
-    # ==============================
-    column_map = {
-        "batteryStateOfCharge": ["soc", "battery soc", "stateofcharge"],
-        "packCurrent": ["current", "pack current", "battery current"],
-        "packVoltage": ["voltage", "pack voltage"],
-        "odometer": ["odo", "odometer"],
-        "batteryEnergy": ["energy", "battery energy"],
-        "driveMode": ["mode", "drive mode"],
-        "timestamp": ["time", "timestamp", "date"]
-    }
+    print("Detected Columns:", df.columns.tolist())  # DEBUG
 
-    def find_column(possible_names):
-        for name in possible_names:
-            for col in df.columns:
+    # ==============================
+    # SAFE COLUMN DETECTION
+    # ==============================
+    def get_col(possible):
+        for col in df.columns:
+            for name in possible:
                 if name in col:
                     return col
         return None
 
-    mapped = {}
-    for key, names in column_map.items():
-        col = find_column(names)
-        if col:
-            mapped[key] = col
+    soc_col = get_col(["soc"])
+    current_col = get_col(["current"])
+    voltage_col = get_col(["voltage"])
+    odo_col = get_col(["odo"])
+    energy_col = get_col(["energy"])
+    mode_col = get_col(["mode"])
+    time_col = get_col(["time", "date"])
 
     # ==============================
-    # REQUIRED CHECK
+    # VALIDATION
     # ==============================
-    required = ["packCurrent", "batteryStateOfCharge", "odometer"]
+    if not soc_col or not current_col or not odo_col:
+        raise Exception(f"""
+❌ Required columns missing!
 
-    for r in required:
-        if r not in mapped:
-            raise Exception(f"Missing column: {r}")
+Detected columns:
+{df.columns.tolist()}
+
+👉 Make sure your file has:
+- SOC
+- Current
+- ODO
+""")
 
     # ==============================
-    # RENAME
+    # RENAME SAFELY
     # ==============================
     df = df.rename(columns={
-        mapped.get("batteryStateOfCharge"): "batteryStateOfCharge",
-        mapped.get("packCurrent"): "packCurrent",
-        mapped.get("packVoltage"): "packVoltage",
-        mapped.get("odometer"): "odometer",
-        mapped.get("batteryEnergy"): "batteryEnergy",
-        mapped.get("driveMode"): "driveMode",
-        mapped.get("timestamp"): "timestamp"
+        soc_col: "batteryStateOfCharge",
+        current_col: "packCurrent",
+        odo_col: "odometer"
     })
+
+    if voltage_col:
+        df.rename(columns={voltage_col: "packVoltage"}, inplace=True)
+    if energy_col:
+        df.rename(columns={energy_col: "batteryEnergy"}, inplace=True)
+    if mode_col:
+        df.rename(columns={mode_col: "driveMode"}, inplace=True)
+    if time_col:
+        df.rename(columns={time_col: "timestamp"}, inplace=True)
 
     df = df.dropna().reset_index(drop=True)
 
@@ -75,12 +78,10 @@ def process_ev_data(file, vehicle_type):
 
         current = df.loc[i, 'packCurrent']
 
-        # START
         if not in_trip and current < START_THRESHOLD:
             in_trip = True
             start_index = i
 
-        # END
         elif in_trip and current > END_THRESHOLD:
             end_index = i
 
@@ -105,7 +106,7 @@ def process_ev_data(file, vehicle_type):
 
 
 # ==============================
-# CALCULATE SINGLE TRIP
+# CALCULATE TRIP
 # ==============================
 def calculate_trip(df, vehicle_type):
 
@@ -120,9 +121,9 @@ def calculate_trip(df, vehicle_type):
     if distance < 1:
         return None
 
-    start_energy = df.iloc[0].get('batteryEnergy', 0)
-    end_energy = df.iloc[-1].get('batteryEnergy', 0)
-    energy_used = start_energy - end_energy
+    energy_used = 0
+    if "batteryEnergy" in df:
+        energy_used = df.iloc[0]['batteryEnergy'] - df.iloc[-1]['batteryEnergy']
 
     avg_current = df['packCurrent'].mean()
     energy_per_km = energy_used / distance if distance > 0 else 0
@@ -135,9 +136,12 @@ def calculate_trip(df, vehicle_type):
 
     payload = energy_per_km * payload_map.get(vehicle_type, 14)
 
-    eco = df[df['driveMode'] == 'economy']['odometer'].diff().sum() if 'driveMode' in df else 0
-    thu = df[df['driveMode'] == 'thunder']['odometer'].diff().sum() if 'driveMode' in df else 0
-    rhi = df[df['driveMode'] == 'rhino']['odometer'].diff().sum() if 'driveMode' in df else 0
+    eco = thu = rhi = 0
+
+    if "driveMode" in df:
+        eco = df[df['driveMode'].str.lower() == 'economy']['odometer'].diff().sum()
+        thu = df[df['driveMode'].str.lower() == 'thunder']['odometer'].diff().sum()
+        rhi = df[df['driveMode'].str.lower() == 'rhino']['odometer'].diff().sum()
 
     start_time = df.iloc[0].get('timestamp', '')
     end_time = df.iloc[-1].get('timestamp', '')
