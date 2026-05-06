@@ -1,9 +1,6 @@
 import pandas as pd
 import streamlit as st
 
-# ==============================
-# MAIN FUNCTION (MULTI-TRIP)
-# ==============================
 @st.cache_data
 def process_ev_data(file, vehicle_type="turbo"):
 
@@ -48,22 +45,33 @@ def process_ev_data(file, vehicle_type="turbo"):
             start_index = i
             in_trip = True
 
-        # END TRIP
+        # END TRIP (IMPROVED)
         elif in_trip:
+
+            # Condition 1: Charging
+            charging = False
             if i + CHARGE_WINDOW < len(df):
                 window = df.loc[i:i+CHARGE_WINDOW]
+                charging = (window['batteryCurrent'] > CHARGE_THRESHOLD).sum() > CHARGE_WINDOW * 0.6
 
-                if (window['batteryCurrent'] > CHARGE_THRESHOLD).sum() > CHARGE_WINDOW * 0.7:
-                    end_index = i - 1
+            # Condition 2: Vehicle stopped
+            odo_diff_now = df.loc[i, 'odometer'] - df.loc[i-1, 'odometer']
+            stopped = abs(odo_diff_now) < 0.001
 
-                    trip_df = df.loc[start_index:end_index].reset_index(drop=True)
+            # Condition 3: Idle current
+            idle = abs(current) < 0.3
 
-                    if len(trip_df) > 30:
-                        result = calculate_trip(trip_df, vehicle_type)
-                        if result:
-                            trips.append(result)
+            if charging or (stopped and idle):
 
-                    in_trip = False
+                end_index = i - 1
+                trip_df = df.loc[start_index:end_index].reset_index(drop=True)
+
+                if len(trip_df) > 30:
+                    result = calculate_trip(trip_df, vehicle_type)
+                    if result:
+                        trips.append(result)
+
+                in_trip = False
 
     # LAST TRIP FIX
     if in_trip:
