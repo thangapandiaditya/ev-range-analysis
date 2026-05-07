@@ -17,6 +17,7 @@ def process_ev_data(file, vehicle_type="turbo"):
     ]
 
     df = pd.read_excel(file, usecols=columns_needed)
+
     df = df.reset_index(drop=True)
 
     # ==============================
@@ -36,16 +37,11 @@ def process_ev_data(file, vehicle_type="turbo"):
     CHARGE_WINDOW = 30
 
     # ==============================
-    # MULTIPLE TRIPS STORAGE
+    # FIND TRIP START
     # ==============================
-    trips = []
-
     start_index = None
 
-    # ==============================
-    # FIND MULTIPLE TRIPS
-    # ==============================
-    for i in range(1, len(df) - CHARGE_WINDOW):
+    for i in range(1, len(df)):
 
         current = df.loc[i, 'batteryCurrent']
 
@@ -54,121 +50,108 @@ def process_ev_data(file, vehicle_type="turbo"):
             - df.loc[i - 1, 'odometer']
         )
 
-        # ==============================
-        # FIND TRIP START
-        # ==============================
-        if start_index is None:
+        if current < MIN_CURRENT and odo_diff > 0:
 
-            if current < MIN_CURRENT and odo_diff > 0:
-                start_index = i
+            start_index = i
+            break
 
-                # BACKTRACK
-                for j in range(start_index, 0, -1):
+    if start_index is None:
+        return None
 
-                    if (
-                        df.loc[j, 'batteryStateOfCharge']
-                        >= df.loc[start_index, 'batteryStateOfCharge']
-                    ):
-                        start_index = j
+    # ==============================
+    # BACKTRACK
+    # ==============================
+    for j in range(start_index, 0, -1):
 
-                    else:
-                        break
+        if (
+            df.loc[j, 'batteryStateOfCharge']
+            >= df.loc[start_index, 'batteryStateOfCharge']
+        ):
 
-        # ==============================
-        # FIND TRIP END
-        # ==============================
+            start_index = j
+
         else:
-
-            window = df.loc[i:i + CHARGE_WINDOW]
-
-            charging_detected = (
-                (
-                    window['batteryCurrent']
-                    > CHARGE_THRESHOLD
-                ).sum()
-                > CHARGE_WINDOW * 0.7
-            )
-
-            if charging_detected:
-
-                end_index = i - 1
-
-                trip = df.loc[
-                    start_index:end_index
-                ].reset_index(drop=True)
-
-                # ==============================
-                # VALID TRIP CHECK
-                # ==============================
-                if len(trip) > 20:
-
-                    result = calculate_trip(
-                        trip,
-                        vehicle_type,
-                        VEHICLE_PAYLOAD_FACTOR
-                    )
-
-                    if result:
-                        trips.append(result)
-
-                start_index = None
+            break
 
     # ==============================
-    # LAST TRIP
+    # FIND TRIP END
     # ==============================
-    if start_index is not None:
+    end_index = len(df) - 1
 
-        trip = df.loc[
-            start_index:
-        ].reset_index(drop=True)
+    for i in range(
+        start_index,
+        len(df) - CHARGE_WINDOW
+    ):
 
-        if len(trip) > 20:
+        window = df.loc[i:i + CHARGE_WINDOW]
 
-            result = calculate_trip(
-                trip,
-                vehicle_type,
-                VEHICLE_PAYLOAD_FACTOR
-            )
+        charging_detected = (
+            (
+                window['batteryCurrent']
+                > CHARGE_THRESHOLD
+            ).sum()
+            > CHARGE_WINDOW * 0.7
+        )
 
-            if result:
-                trips.append(result)
+        if charging_detected:
 
-    return trips
+            end_index = i - 1
+            break
 
-
-# ==============================
-# SINGLE TRIP CALCULATION
-# ==============================
-def calculate_trip(
-    trip,
-    vehicle_type,
-    VEHICLE_PAYLOAD_FACTOR
-):
+    # ==============================
+    # EXTRACT TRIP
+    # ==============================
+    trip = df.loc[
+        start_index:end_index
+    ].reset_index(drop=True)
 
     # ==============================
     # CALCULATIONS
     # ==============================
-    start_soc = trip['batteryStateOfCharge'].iloc[0]
-    end_soc = trip['batteryStateOfCharge'].iloc[-1]
+    start_soc = trip[
+        'batteryStateOfCharge'
+    ].iloc[0]
 
-    soc_consumed = start_soc - end_soc
+    end_soc = trip[
+        'batteryStateOfCharge'
+    ].iloc[-1]
 
-    start_odo = trip['odometer'].iloc[0]
-    end_odo = trip['odometer'].iloc[-1]
+    soc_consumed = (
+        start_soc - end_soc
+    )
 
-    total_km = end_odo - start_odo
+    start_odo = trip[
+        'odometer'
+    ].iloc[0]
 
-    start_energy = trip['batteryAvailableEnergy'].iloc[0]
-    end_energy = trip['batteryAvailableEnergy'].iloc[-1]
+    end_odo = trip[
+        'odometer'
+    ].iloc[-1]
 
-    energy_consumed = start_energy - end_energy
+    total_km = (
+        end_odo - start_odo
+    )
+
+    start_energy = trip[
+        'batteryAvailableEnergy'
+    ].iloc[0]
+
+    end_energy = trip[
+        'batteryAvailableEnergy'
+    ].iloc[-1]
+
+    energy_consumed = (
+        start_energy - end_energy
+    )
 
     energy_per_km = (
         energy_consumed / total_km
         if total_km > 0 else 0
     )
 
-    avg_current = trip['batteryCurrent'].mean()
+    avg_current = trip[
+        'batteryCurrent'
+    ].mean()
 
     # ==============================
     # PAYLOAD
@@ -201,12 +184,15 @@ def calculate_trip(
         )
 
         if "eco" in mode:
+
             mode_distance['Economy'] += dist
 
         elif "thunder" in mode:
+
             mode_distance['Thunder'] += dist
 
         elif "rhino" in mode:
+
             mode_distance['Rhino'] += dist
 
     # ==============================
@@ -222,15 +208,28 @@ def calculate_trip(
         if energy_per_km > 0 else None
     )
 
+    # ==============================
+    # RETURN SINGLE DICTIONARY
+    # ==============================
     return {
+
         "start_soc": start_soc,
+
         "end_soc": end_soc,
+
         "soc_consumed": soc_consumed,
+
         "avg_current": avg_current,
+
         "total_km": total_km,
+
         "energy_per_km": energy_per_km,
+
         "payload": payload,
+
         "approx_mileage_soc": approx_mileage_soc,
+
         "approx_mileage_energy": approx_mileage_energy,
+
         "mode_distance": mode_distance
     }
